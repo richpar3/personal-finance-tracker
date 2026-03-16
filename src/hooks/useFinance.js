@@ -89,6 +89,7 @@ export default function useFinance() {
   const [authLoading,    setAuthLoading]   = useState(true)
   const [isSyncing,      setIsSyncing]     = useState(false)
   const [syncError,      setSyncError]     = useState(null)
+  const [isDemo,         setIsDemo]        = useState(false)
 
   const txRef = useRef([])
   useEffect(() => { txRef.current = transactions }, [transactions])
@@ -167,6 +168,20 @@ export default function useFinance() {
     await supabase.auth.signOut()
   }
 
+  // ── Demo mode ──────────────────────────────────────────────────────────────
+  function enterDemoMode() {
+    const { transactions: t, accounts: a } = generateSampleData()
+    setTransactions(t)
+    setAccounts(a)
+    setIsDemo(true)
+  }
+
+  function exitDemoMode() {
+    setTransactions([])
+    setAccounts([])
+    setIsDemo(false)
+  }
+
   // ── CRUD: Transactions ────────────────────────────────────────────────────
   function addTransaction(tx) {
     setTransactions(prev => { const next = [...prev, tx]; saveLocal(KEYS.transactions, next); return next })
@@ -179,7 +194,7 @@ export default function useFinance() {
       saveLocal(KEYS.accounts, next)
       return next
     })
-    if (user) {
+    if (user && !isDemo) {
       supabase.from('transactions').insert(transactionToDb(tx, user.id)).then(({ error }) => { if (error) setSyncError(error.message) })
       setAccounts(prev => {
         const acc = prev.find(a => a.id === tx.accountId)
@@ -200,7 +215,7 @@ export default function useFinance() {
       saveLocal(KEYS.accounts, next)
       return next
     })
-    if (user) {
+    if (user && !isDemo) {
       supabase.from('transactions').delete().eq('id', tx.id).then(({ error }) => { if (error) setSyncError(error.message) })
       setAccounts(prev => {
         const acc = prev.find(a => a.id === tx.accountId)
@@ -225,7 +240,7 @@ export default function useFinance() {
       saveLocal(KEYS.accounts, next)
       return next
     })
-    if (user) {
+    if (user && !isDemo) {
       supabase.from('transactions').update(transactionToDb(updated, user.id)).eq('id', updated.id).then(({ error }) => { if (error) setSyncError(error.message) })
       setAccounts(prev => {
         const ids = new Set([old.accountId, updated.accountId])
@@ -240,18 +255,18 @@ export default function useFinance() {
   // ── CRUD: Accounts ────────────────────────────────────────────────────────
   function addAccount(account) {
     setAccounts(prev => { const next = [...prev, account]; saveLocal(KEYS.accounts, next); return next })
-    if (user) supabase.from('accounts').insert(accountToDb(account, user.id)).then(({ error }) => { if (error) setSyncError(error.message) })
+    if (user && !isDemo) supabase.from('accounts').insert(accountToDb(account, user.id)).then(({ error }) => { if (error) setSyncError(error.message) })
   }
 
   function deleteAccount(account) {
     setAccounts(prev => { const next = prev.filter(a => a.id !== account.id); saveLocal(KEYS.accounts, next); return next })
     setTransactions(prev => { const next = prev.filter(t => t.accountId !== account.id); saveLocal(KEYS.transactions, next); return next })
-    if (user) supabase.from('accounts').delete().eq('id', account.id).then(({ error }) => { if (error) setSyncError(error.message) })
+    if (user && !isDemo) supabase.from('accounts').delete().eq('id', account.id).then(({ error }) => { if (error) setSyncError(error.message) })
   }
 
   function updateAccount(updated) {
     setAccounts(prev => { const next = prev.map(a => a.id === updated.id ? updated : a); saveLocal(KEYS.accounts, next); return next })
-    if (user) supabase.from('accounts').update(accountToDb(updated, user.id)).eq('id', updated.id).then(({ error }) => { if (error) setSyncError(error.message) })
+    if (user && !isDemo) supabase.from('accounts').update(accountToDb(updated, user.id)).eq('id', updated.id).then(({ error }) => { if (error) setSyncError(error.message) })
   }
 
   // ── Export / Import ───────────────────────────────────────────────────────
@@ -275,10 +290,45 @@ export default function useFinance() {
           if (!Array.isArray(backup.transactions) || !Array.isArray(backup.accounts)) {
             reject(new Error('Invalid backup file')); return
           }
-          setTransactions(backup.transactions)
-          setAccounts(backup.accounts)
-          saveLocal(KEYS.transactions, backup.transactions)
-          saveLocal(KEYS.accounts, backup.accounts)
+          const validAccount = a =>
+            a && typeof a === 'object' &&
+            typeof a.id === 'string' && a.id.length > 0 &&
+            typeof a.name === 'string' && a.name.length > 0 &&
+            typeof a.type === 'string' &&
+            typeof a.balance === 'number' && isFinite(a.balance)
+          const validTransaction = t =>
+            t && typeof t === 'object' &&
+            typeof t.id === 'string' && t.id.length > 0 &&
+            typeof t.date === 'string' && !isNaN(Date.parse(t.date)) &&
+            typeof t.amount === 'number' && isFinite(t.amount) && t.amount > 0 &&
+            (t.type === 'income' || t.type === 'expense') &&
+            typeof t.accountId === 'string' && t.accountId.length > 0
+          if (!backup.accounts.every(validAccount)) {
+            reject(new Error('Backup contains invalid account data')); return
+          }
+          if (!backup.transactions.every(validTransaction)) {
+            reject(new Error('Backup contains invalid transaction data')); return
+          }
+          const accounts = backup.accounts.map(a => ({
+            id: a.id, name: String(a.name).slice(0, 100), type: a.type,
+            balance: a.balance, currency: a.currency ?? 'USD',
+            lastFourDigits: String(a.lastFourDigits ?? '').replace(/\D/g, '').slice(0, 4),
+            color: /^#[0-9A-Fa-f]{6}$/.test(a.color) ? a.color : '#4A90D9',
+            notes: String(a.notes ?? '').slice(0, 500),
+          }))
+          const transactions = backup.transactions.map(t => ({
+            id: t.id, date: t.date, category: String(t.category ?? ''),
+            amount: t.amount, accountId: t.accountId,
+            accountName: String(t.accountName ?? '').slice(0, 100),
+            description: String(t.description ?? '').slice(0, 200),
+            type: t.type, notes: String(t.notes ?? '').slice(0, 500),
+            isRecurring: Boolean(t.isRecurring),
+            tags: Array.isArray(t.tags) ? t.tags.filter(tag => typeof tag === 'string').slice(0, 10) : [],
+          }))
+          setTransactions(transactions)
+          setAccounts(accounts)
+          saveLocal(KEYS.transactions, transactions)
+          saveLocal(KEYS.accounts, accounts)
           resolve()
         } catch (err) { reject(err) }
       }
@@ -343,6 +393,7 @@ export default function useFinance() {
   return {
     transactions, accounts, selectedPeriod, setSelectedPeriod,
     user, authLoading, isSyncing, syncError, signOut,
+    isDemo, enterDemoMode, exitDemoMode,
     addTransaction, deleteTransaction, updateTransaction,
     addAccount, deleteAccount, updateAccount,
     exportBackup, importBackup,

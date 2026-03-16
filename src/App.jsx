@@ -9,6 +9,7 @@ import AccountsView from './views/Accounts/AccountsView'
 import SettingsModal from './components/SettingsModal'
 import AddTransactionModal from './views/Transactions/AddTransactionModal'
 import LoginView from './views/Auth/LoginView'
+import DemoBanner from './components/DemoBanner'
 
 export default function App() {
   const [activeTab, setActiveTab]       = useState(0)
@@ -24,12 +25,13 @@ export default function App() {
     )
   }
 
-  if (!finance.user) {
-    return <LoginView />
+  if (!finance.user && !finance.isDemo) {
+    return <LoginView onDemo={finance.enterDemoMode} />
   }
 
   return (
     <div className="app">
+      {finance.isDemo && <DemoBanner onExit={finance.exitDemoMode} />}
       <main className="main-content">
         {activeTab === 0 && <DashboardView finance={finance} onOpenSettings={() => setShowSettings(true)} onAddTx={() => setShowAdd(true)} />}
         {activeTab === 1 && <TransactionListView finance={finance} onAddTx={() => setShowAdd(true)} />}
