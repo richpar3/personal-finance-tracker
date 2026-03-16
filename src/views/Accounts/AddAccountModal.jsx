@@ -4,24 +4,18 @@ import { ACCOUNT_TYPES } from '../../utils/categories'
 
 export default function AddAccountModal({ finance, onClose, editAccount = null }) {
   const isEdit = !!editAccount
-  const [name,           setName]           = useState(editAccount?.name || '')
-  const [type,           setType]           = useState(editAccount?.type || 'checking')
-  const [balance,        setBalance]        = useState(editAccount ? String(editAccount.balance) : '')
-  const [lastFourDigits, setLastFourDigits] = useState(editAccount?.lastFourDigits || '')
-  const [notes,          setNotes]          = useState(editAccount?.notes || '')
+  const [name,  setName]  = useState(editAccount?.name || '')
+  const [type,  setType]  = useState(editAccount?.type || 'checking')
+  const [notes, setNotes] = useState(editAccount?.notes || '')
 
   function handleSubmit(e) {
     e.preventDefault()
-    const bal = parseFloat(balance) || 0
     const account = {
-      id:             isEdit ? editAccount.id : generateId(),
-      name:           name.trim(),
+      id:        isEdit ? editAccount.id : generateId(),
+      name:      name.trim(),
       type,
-      balance:        bal,
-      currency:       'USD',
-      lastFourDigits: lastFourDigits.trim() || undefined,
-      notes:          notes.trim(),
-      createdAt:      isEdit ? editAccount.createdAt : new Date().toISOString(),
+      notes:     notes.trim(),
+      createdAt: isEdit ? editAccount.createdAt : new Date().toISOString(),
     }
     if (isEdit) finance.updateAccount(account)
     else        finance.addAccount(account)
@@ -59,34 +53,6 @@ export default function AddAccountModal({ finance, onClose, editAccount = null }
                   <option key={k} value={k}>{v.emoji} {v.label}</option>
                 ))}
               </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Current Balance</label>
-              <div className="amount-wrapper">
-                <span className="amount-prefix">$</span>
-                <input
-                  className="form-input form-input-amount"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={balance}
-                  onChange={e => setBalance(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Last 4 Digits (optional)</label>
-              <input
-                className="form-input"
-                type="text"
-                maxLength={4}
-                placeholder="e.g. 4521"
-                value={lastFourDigits}
-                onChange={e => setLastFourDigits(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              />
             </div>
 
             <div className="form-group">
