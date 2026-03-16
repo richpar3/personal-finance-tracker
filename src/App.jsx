@@ -2,13 +2,13 @@ import { useState } from 'react'
 import './App.css'
 import useFinance from './hooks/useFinance'
 import TabBar from './components/TabBar'
-import DemoBanner from './components/DemoBanner'
 import DashboardView from './views/Dashboard/DashboardView'
 import TransactionListView from './views/Transactions/TransactionListView'
 import AnalyticsView from './views/Analytics/AnalyticsView'
 import AccountsView from './views/Accounts/AccountsView'
 import SettingsModal from './components/SettingsModal'
 import AddTransactionModal from './views/Transactions/AddTransactionModal'
+import LoginView from './views/Auth/LoginView'
 
 export default function App() {
   const [activeTab, setActiveTab]       = useState(0)
@@ -16,12 +16,20 @@ export default function App() {
   const [showAdd, setShowAdd]           = useState(false)
   const finance = useFinance()
 
+  if (finance.authLoading) {
+    return (
+      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1C1C1E' }}>
+        <span style={{ color: '#8E8E93', fontSize: 16 }}>Loading…</span>
+      </div>
+    )
+  }
+
+  if (!finance.user) {
+    return <LoginView />
+  }
+
   return (
     <div className="app">
-      {finance.isDemoMode && (
-        <DemoBanner onExit={() => finance.setDemoMode(false)} />
-      )}
-
       <main className="main-content">
         {activeTab === 0 && <DashboardView finance={finance} onOpenSettings={() => setShowSettings(true)} onAddTx={() => setShowAdd(true)} />}
         {activeTab === 1 && <TransactionListView finance={finance} onAddTx={() => setShowAdd(true)} />}

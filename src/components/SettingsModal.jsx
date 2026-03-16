@@ -22,27 +22,28 @@ export default function SettingsModal({ finance, onClose }) {
         </div>
         <div className="modal-body">
 
-          {/* Privacy */}
+          {/* Account */}
           <div className="settings-section">
-            <div className="settings-section-title">Privacy</div>
+            <div className="settings-section-title">Account</div>
             <div className="settings-card">
               <div className="settings-row">
-                <div className="settings-row-icon" style={{ background: '#FFF3E0' }}>🙈</div>
+                <div className="settings-row-icon" style={{ background: '#E8F0FF' }}>👤</div>
                 <div className="settings-row-text">
-                  <div className="settings-row-title">Demo Mode</div>
-                  <div className="settings-row-sub">Show sample data, hide real finances</div>
-                </div>
-                <div className="settings-row-action">
-                  <label className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={finance.isDemoMode}
-                      onChange={e => finance.setDemoMode(e.target.checked)}
-                    />
-                    <span className="toggle-track" />
-                  </label>
+                  <div className="settings-row-title">Signed in</div>
+                  <div className="settings-row-sub">{finance.user?.email}</div>
                 </div>
               </div>
+              <button
+                className="settings-row"
+                style={{ width: '100%', textAlign: 'left', cursor: 'pointer', background: 'none', border: 'none' }}
+                onClick={() => { finance.signOut(); onClose() }}
+              >
+                <div className="settings-row-icon" style={{ background: '#FFE8E8' }}>🚪</div>
+                <div className="settings-row-text">
+                  <div className="settings-row-title" style={{ color: '#FF453A' }}>Sign Out</div>
+                </div>
+                <span style={{ color: '#C7C7CC', fontSize: 18 }}>›</span>
+              </button>
             </div>
           </div>
 
@@ -84,7 +85,7 @@ export default function SettingsModal({ finance, onClose }) {
                 <div className="settings-row-icon" style={{ background: '#F2F2F7' }}>💰</div>
                 <div className="settings-row-text">
                   <div className="settings-row-title">Personal Finance Tracker</div>
-                  <div className="settings-row-sub">Free · Open source · No account required</div>
+                  <div className="settings-row-sub">Free · Open source · Cloud synced</div>
                 </div>
               </div>
             </div>
