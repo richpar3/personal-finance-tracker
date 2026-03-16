@@ -31,7 +31,7 @@ struct CategorySpendingChart: View {
                             .foregroundStyle(item.category.color)
                             .cornerRadius(4)
                         }
-                        .chartAngleSelection(value: .constant(nil))
+                        .chartAngleSelection(value: .constant(nil as Double?))
                         .frame(width: 140, height: 140)
 
                         // Center label

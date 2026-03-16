@@ -38,7 +38,7 @@ enum AccountType: String, CaseIterable, Codable {
     }
 }
 
-struct Account: Identifiable, Codable, Equatable {
+struct Account: Identifiable, Codable, Equatable, Hashable {
     var id: UUID = UUID()
     var name: String
     var type: AccountType
