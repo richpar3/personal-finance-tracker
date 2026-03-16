@@ -1,141 +1,266 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { generateSampleData } from '../utils/sampleData'
 import { LIABILITY_TYPES } from '../utils/categories'
+import { supabase } from '../lib/supabase'
 
 const KEYS = {
   transactions: 'pft_transactions',
   accounts:     'pft_accounts',
-  demoMode:     'pft_demo_mode',
 }
 
-function load(key, fallback) {
+function loadLocal(key, fallback) {
   try {
     const v = localStorage.getItem(key)
     return v ? JSON.parse(v) : fallback
   } catch { return fallback }
 }
 
-function save(key, value) {
+function saveLocal(key, value) {
   localStorage.setItem(key, JSON.stringify(value))
 }
 
-export default function useFinance() {
-  const [transactions, setTransactions] = useState([])
-  const [accounts,     setAccounts]     = useState([])
-  const [isDemoMode,   setIsDemoModeRaw] = useState(false)
-  const [selectedPeriod, setSelectedPeriod] = useState('month')
-  const [initialized,  setInitialized]  = useState(false)
+// ── Supabase helpers ────────────────────────────────────────────────────────
 
-  // Ref so CRUD callbacks can read current transactions without stale closure
+function dbToAccount(row) {
+  return {
+    id:             row.id,
+    name:           row.name,
+    type:           row.type,
+    balance:        row.balance,
+    currency:       row.currency ?? 'USD',
+    lastFourDigits: row.last_four_digits ?? '',
+    color:          row.color ?? '#4A90D9',
+    notes:          row.notes ?? '',
+  }
+}
+
+function accountToDb(a, userId) {
+  return {
+    id:               a.id,
+    name:             a.name,
+    type:             a.type,
+    balance:          a.balance,
+    currency:         a.currency ?? 'USD',
+    last_four_digits: a.lastFourDigits ?? '',
+    color:            a.color ?? '#4A90D9',
+    notes:            a.notes ?? '',
+    user_id:          userId,
+  }
+}
+
+function dbToTransaction(row) {
+  return {
+    id:          row.id,
+    date:        row.date,
+    category:    row.category,
+    amount:      row.amount,
+    accountId:   row.account_id,
+    accountName: row.account_name,
+    description: row.description ?? '',
+    type:        row.type,
+    notes:       row.notes ?? '',
+    isRecurring: row.is_recurring ?? false,
+    tags:        row.tags ?? [],
+  }
+}
+
+function transactionToDb(t, userId) {
+  return {
+    id:           t.id,
+    date:         t.date,
+    category:     t.category,
+    amount:       t.amount,
+    account_id:   t.accountId,
+    account_name: t.accountName,
+    description:  t.description ?? '',
+    type:         t.type,
+    notes:        t.notes ?? '',
+    is_recurring: t.isRecurring ?? false,
+    tags:         t.tags ?? [],
+    user_id:      userId,
+  }
+}
+
+export default function useFinance() {
+  const [transactions,   setTransactions]  = useState([])
+  const [accounts,       setAccounts]      = useState([])
+  const [selectedPeriod, setSelectedPeriod] = useState('month')
+  const [user,           setUser]          = useState(null)
+  const [authLoading,    setAuthLoading]   = useState(true)
+  const [isSyncing,      setIsSyncing]     = useState(false)
+  const [syncError,      setSyncError]     = useState(null)
+
   const txRef = useRef([])
   useEffect(() => { txRef.current = transactions }, [transactions])
 
-  // ── Initial load ──────────────────────────────────────────────────────────
+  // ── Auth listener ──────────────────────────────────────────────────────────
   useEffect(() => {
-    const demoMode = localStorage.getItem(KEYS.demoMode) === 'true'
-    if (demoMode) {
-      const { transactions: t, accounts: a } = generateSampleData()
-      setTransactions(t)
-      setAccounts(a)
-      setIsDemoModeRaw(true)
-    } else {
-      const savedAccounts = load(KEYS.accounts, [])
-      if (savedAccounts.length === 0) {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      setAuthLoading(false)
+      if (session?.user) syncFromSupabase(session.user)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const u = session?.user ?? null
+      setUser(u)
+      setAuthLoading(false)
+      if (u) {
+        syncFromSupabase(u)
+      } else {
+        setTransactions([])
+        setAccounts([])
+        localStorage.removeItem(KEYS.transactions)
+        localStorage.removeItem(KEYS.accounts)
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // ── Supabase sync ──────────────────────────────────────────────────────────
+  async function syncFromSupabase(u) {
+    setIsSyncing(true)
+    setSyncError(null)
+    try {
+      // Show local cache immediately while fetching
+      const cached = loadLocal(KEYS.accounts, [])
+      if (cached.length > 0) {
+        setAccounts(cached)
+        setTransactions(loadLocal(KEYS.transactions, []))
+      }
+
+      const [{ data: accRows, error: accErr }, { data: txRows, error: txErr }] = await Promise.all([
+        supabase.from('accounts').select('*').eq('user_id', u.id),
+        supabase.from('transactions').select('*').eq('user_id', u.id),
+      ])
+      if (accErr) throw accErr
+      if (txErr)  throw txErr
+
+      if (accRows.length === 0) {
+        // First sign-in: seed sample data and push to Supabase
         const { transactions: t, accounts: a } = generateSampleData()
         setTransactions(t)
         setAccounts(a)
-        save(KEYS.transactions, t)
-        save(KEYS.accounts, a)
+        saveLocal(KEYS.transactions, t)
+        saveLocal(KEYS.accounts, a)
+        await Promise.all([
+          supabase.from('accounts').insert(a.map(acc => accountToDb(acc, u.id))),
+          supabase.from('transactions').insert(t.map(tx => transactionToDb(tx, u.id))),
+        ])
       } else {
-        setTransactions(load(KEYS.transactions, []))
-        setAccounts(savedAccounts)
+        const a = accRows.map(dbToAccount)
+        const t = txRows.map(dbToTransaction)
+        setAccounts(a)
+        setTransactions(t)
+        saveLocal(KEYS.accounts, a)
+        saveLocal(KEYS.transactions, t)
       }
+    } catch (err) {
+      setSyncError(err.message)
+    } finally {
+      setIsSyncing(false)
     }
-    setInitialized(true)
-  }, [])
+  }
 
-  // ── Auto-persist (skip demo mode and first render) ────────────────────────
-  useEffect(() => {
-    if (!initialized || isDemoMode) return
-    save(KEYS.transactions, transactions)
-    save(KEYS.accounts, accounts)
-  }, [transactions, accounts, isDemoMode, initialized])
-
-  // ── Demo mode ─────────────────────────────────────────────────────────────
-  function setDemoMode(enabled) {
-    localStorage.setItem(KEYS.demoMode, enabled ? 'true' : 'false')
-    setIsDemoModeRaw(enabled)
-    if (enabled) {
-      const { transactions: t, accounts: a } = generateSampleData()
-      setTransactions(t)
-      setAccounts(a)
-    } else {
-      setAccounts(load(KEYS.accounts, []))
-      setTransactions(load(KEYS.transactions, []))
-    }
+  // ── Auth actions ───────────────────────────────────────────────────────────
+  async function signOut() {
+    await supabase.auth.signOut()
   }
 
   // ── CRUD: Transactions ────────────────────────────────────────────────────
   function addTransaction(tx) {
-    setTransactions(prev => [...prev, tx])
-    setAccounts(prev => prev.map(acc => {
-      if (acc.id !== tx.accountId) return acc
-      const delta = tx.type === 'income' ? tx.amount : -tx.amount
-      return { ...acc, balance: acc.balance + delta }
-    }))
+    setTransactions(prev => { const next = [...prev, tx]; saveLocal(KEYS.transactions, next); return next })
+    setAccounts(prev => {
+      const next = prev.map(acc => {
+        if (acc.id !== tx.accountId) return acc
+        const delta = tx.type === 'income' ? tx.amount : -tx.amount
+        return { ...acc, balance: acc.balance + delta }
+      })
+      saveLocal(KEYS.accounts, next)
+      return next
+    })
+    if (user) {
+      supabase.from('transactions').insert(transactionToDb(tx, user.id)).then(({ error }) => { if (error) setSyncError(error.message) })
+      setAccounts(prev => {
+        const acc = prev.find(a => a.id === tx.accountId)
+        if (acc) supabase.from('accounts').update(accountToDb(acc, user.id)).eq('id', acc.id).then(({ error }) => { if (error) setSyncError(error.message) })
+        return prev
+      })
+    }
   }
 
   function deleteTransaction(tx) {
-    setTransactions(prev => prev.filter(t => t.id !== tx.id))
-    setAccounts(prev => prev.map(acc => {
-      if (acc.id !== tx.accountId) return acc
-      const delta = tx.type === 'income' ? -tx.amount : tx.amount
-      return { ...acc, balance: acc.balance + delta }
-    }))
+    setTransactions(prev => { const next = prev.filter(t => t.id !== tx.id); saveLocal(KEYS.transactions, next); return next })
+    setAccounts(prev => {
+      const next = prev.map(acc => {
+        if (acc.id !== tx.accountId) return acc
+        const delta = tx.type === 'income' ? -tx.amount : tx.amount
+        return { ...acc, balance: acc.balance + delta }
+      })
+      saveLocal(KEYS.accounts, next)
+      return next
+    })
+    if (user) {
+      supabase.from('transactions').delete().eq('id', tx.id).then(({ error }) => { if (error) setSyncError(error.message) })
+      setAccounts(prev => {
+        const acc = prev.find(a => a.id === tx.accountId)
+        if (acc) supabase.from('accounts').update(accountToDb(acc, user.id)).eq('id', acc.id).then(({ error }) => { if (error) setSyncError(error.message) })
+        return prev
+      })
+    }
   }
 
   function updateTransaction(updated) {
     const old = txRef.current.find(t => t.id === updated.id)
     if (!old) return
-    setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t))
-    setAccounts(prev => prev.map(acc => {
-      let balance = acc.balance
-      if (acc.id === old.accountId) {
-        balance += old.type === 'income' ? -old.amount : old.amount
-      }
-      if (acc.id === updated.accountId) {
-        balance += updated.type === 'income' ? updated.amount : -updated.amount
-      }
-      if (acc.id === old.accountId || acc.id === updated.accountId) {
-        return { ...acc, balance }
-      }
-      return acc
-    }))
+    setTransactions(prev => { const next = prev.map(t => t.id === updated.id ? updated : t); saveLocal(KEYS.transactions, next); return next })
+    setAccounts(prev => {
+      const next = prev.map(acc => {
+        let balance = acc.balance
+        if (acc.id === old.accountId)     balance += old.type === 'income' ? -old.amount : old.amount
+        if (acc.id === updated.accountId) balance += updated.type === 'income' ? updated.amount : -updated.amount
+        if (acc.id === old.accountId || acc.id === updated.accountId) return { ...acc, balance }
+        return acc
+      })
+      saveLocal(KEYS.accounts, next)
+      return next
+    })
+    if (user) {
+      supabase.from('transactions').update(transactionToDb(updated, user.id)).eq('id', updated.id).then(({ error }) => { if (error) setSyncError(error.message) })
+      setAccounts(prev => {
+        const ids = new Set([old.accountId, updated.accountId])
+        for (const acc of prev) {
+          if (ids.has(acc.id)) supabase.from('accounts').update(accountToDb(acc, user.id)).eq('id', acc.id).then(({ error }) => { if (error) setSyncError(error.message) })
+        }
+        return prev
+      })
+    }
   }
 
   // ── CRUD: Accounts ────────────────────────────────────────────────────────
   function addAccount(account) {
-    setAccounts(prev => [...prev, account])
+    setAccounts(prev => { const next = [...prev, account]; saveLocal(KEYS.accounts, next); return next })
+    if (user) supabase.from('accounts').insert(accountToDb(account, user.id)).then(({ error }) => { if (error) setSyncError(error.message) })
   }
 
   function deleteAccount(account) {
-    setAccounts(prev => prev.filter(a => a.id !== account.id))
-    setTransactions(prev => prev.filter(t => t.accountId !== account.id))
+    setAccounts(prev => { const next = prev.filter(a => a.id !== account.id); saveLocal(KEYS.accounts, next); return next })
+    setTransactions(prev => { const next = prev.filter(t => t.accountId !== account.id); saveLocal(KEYS.transactions, next); return next })
+    if (user) supabase.from('accounts').delete().eq('id', account.id).then(({ error }) => { if (error) setSyncError(error.message) })
   }
 
   function updateAccount(updated) {
-    setAccounts(prev => prev.map(a => a.id === updated.id ? updated : a))
+    setAccounts(prev => { const next = prev.map(a => a.id === updated.id ? updated : a); saveLocal(KEYS.accounts, next); return next })
+    if (user) supabase.from('accounts').update(accountToDb(updated, user.id)).eq('id', updated.id).then(({ error }) => { if (error) setSyncError(error.message) })
   }
 
   // ── Export / Import ───────────────────────────────────────────────────────
   function exportBackup() {
-    const realTx  = isDemoMode ? load(KEYS.transactions, []) : transactions
-    const realAcc = isDemoMode ? load(KEYS.accounts,     []) : accounts
-    const backup = { exportDate: new Date().toISOString(), transactions: realTx, accounts: realAcc }
+    const backup = { exportDate: new Date().toISOString(), transactions, accounts }
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
-    a.href     = url
+    a.href = url
     a.download = `finance-backup-${new Date().toISOString().split('T')[0]}.json`
     a.click()
     URL.revokeObjectURL(url)
@@ -144,19 +269,16 @@ export default function useFinance() {
   function importBackup(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const backup = JSON.parse(e.target.result)
           if (!Array.isArray(backup.transactions) || !Array.isArray(backup.accounts)) {
-            reject(new Error('Invalid backup file — missing transactions or accounts'))
-            return
+            reject(new Error('Invalid backup file')); return
           }
-          setIsDemoModeRaw(false)
-          localStorage.setItem(KEYS.demoMode, 'false')
           setTransactions(backup.transactions)
           setAccounts(backup.accounts)
-          save(KEYS.transactions, backup.transactions)
-          save(KEYS.accounts, backup.accounts)
+          saveLocal(KEYS.transactions, backup.transactions)
+          saveLocal(KEYS.accounts, backup.accounts)
           resolve()
         } catch (err) { reject(err) }
       }
@@ -174,13 +296,13 @@ export default function useFinance() {
       .sort((a, b) => new Date(b.date) - new Date(a.date))
   }, [transactions, selectedPeriod])
 
-  const netWorth       = useMemo(() => accounts.reduce((s, a) => s + (LIABILITY_TYPES.includes(a.type) ? -Math.abs(a.balance) : a.balance), 0), [accounts])
-  const totalAssets    = useMemo(() => accounts.filter(a => !LIABILITY_TYPES.includes(a.type)).reduce((s, a) => s + a.balance, 0), [accounts])
+  const netWorth         = useMemo(() => accounts.reduce((s, a) => s + (LIABILITY_TYPES.includes(a.type) ? -Math.abs(a.balance) : a.balance), 0), [accounts])
+  const totalAssets      = useMemo(() => accounts.filter(a => !LIABILITY_TYPES.includes(a.type)).reduce((s, a) => s + a.balance, 0), [accounts])
   const totalLiabilities = useMemo(() => accounts.filter(a => LIABILITY_TYPES.includes(a.type)).reduce((s, a) => s + a.balance, 0), [accounts])
-  const totalIncome    = useMemo(() => filteredTransactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0), [filteredTransactions])
-  const totalExpenses  = useMemo(() => filteredTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0), [filteredTransactions])
-  const cashFlow       = totalIncome - totalExpenses
-  const savingsRate    = totalIncome > 0 ? (cashFlow / totalIncome) * 100 : 0
+  const totalIncome      = useMemo(() => filteredTransactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0), [filteredTransactions])
+  const totalExpenses    = useMemo(() => filteredTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0), [filteredTransactions])
+  const cashFlow         = totalIncome - totalExpenses
+  const savingsRate      = totalIncome > 0 ? (cashFlow / totalIncome) * 100 : 0
   const recentTransactions = useMemo(() => [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5), [transactions])
 
   const expensesByCategory = useMemo(() => {
@@ -219,9 +341,11 @@ export default function useFinance() {
   }, [transactions])
 
   return {
-    transactions, accounts, isDemoMode, selectedPeriod, setSelectedPeriod,
-    setDemoMode, addTransaction, deleteTransaction, updateTransaction,
-    addAccount, deleteAccount, updateAccount, exportBackup, importBackup,
+    transactions, accounts, selectedPeriod, setSelectedPeriod,
+    user, authLoading, isSyncing, syncError, signOut,
+    addTransaction, deleteTransaction, updateTransaction,
+    addAccount, deleteAccount, updateAccount,
+    exportBackup, importBackup,
     filteredTransactions, netWorth, totalAssets, totalLiabilities,
     totalIncome, totalExpenses, cashFlow, savingsRate,
     recentTransactions, expensesByCategory, monthlyTrend, dailySpending,
