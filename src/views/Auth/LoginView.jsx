@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
-export default function LoginView() {
+export default function LoginView({ onDemo }) {
   const [mode, setMode]       = useState('login') // 'login' | 'signup'
   const [email, setEmail]     = useState('')
   const [password, setPassword] = useState('')
@@ -69,6 +69,7 @@ export default function LoginView() {
             {loading ? 'Please wait…' : mode === 'login' ? 'Sign In' : 'Create Account'}
           </button>
         </form>
+        <button style={styles.demoButton} onClick={onDemo}>Try Demo</button>
       </div>
     </div>
   )
@@ -141,4 +142,16 @@ const styles = {
   },
   error:   { color: '#FF453A', fontSize: 13, margin: 0, textAlign: 'left' },
   success: { color: '#30D158', fontSize: 13, margin: 0, textAlign: 'left' },
+  demoButton: {
+    marginTop: 16,
+    width: '100%',
+    padding: '12px',
+    borderRadius: 12,
+    border: '1px solid #3A3A3C',
+    background: 'transparent',
+    color: '#8E8E93',
+    fontSize: 15,
+    fontWeight: 500,
+    cursor: 'pointer',
+  },
 }

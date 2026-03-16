@@ -89,6 +89,7 @@ export default function useFinance() {
   const [authLoading,    setAuthLoading]   = useState(true)
   const [isSyncing,      setIsSyncing]     = useState(false)
   const [syncError,      setSyncError]     = useState(null)
+  const [isDemo,         setIsDemo]        = useState(false)
 
   const txRef = useRef([])
   useEffect(() => { txRef.current = transactions }, [transactions])
@@ -167,6 +168,20 @@ export default function useFinance() {
     await supabase.auth.signOut()
   }
 
+  // ── Demo mode ──────────────────────────────────────────────────────────────
+  function enterDemoMode() {
+    const { transactions: t, accounts: a } = generateSampleData()
+    setTransactions(t)
+    setAccounts(a)
+    setIsDemo(true)
+  }
+
+  function exitDemoMode() {
+    setTransactions([])
+    setAccounts([])
+    setIsDemo(false)
+  }
+
   // ── CRUD: Transactions ────────────────────────────────────────────────────
   function addTransaction(tx) {
     setTransactions(prev => { const next = [...prev, tx]; saveLocal(KEYS.transactions, next); return next })
@@ -179,7 +194,7 @@ export default function useFinance() {
       saveLocal(KEYS.accounts, next)
       return next
     })
-    if (user) {
+    if (user && !isDemo) {
       supabase.from('transactions').insert(transactionToDb(tx, user.id)).then(({ error }) => { if (error) setSyncError(error.message) })
       setAccounts(prev => {
         const acc = prev.find(a => a.id === tx.accountId)
@@ -200,7 +215,7 @@ export default function useFinance() {
       saveLocal(KEYS.accounts, next)
       return next
     })
-    if (user) {
+    if (user && !isDemo) {
       supabase.from('transactions').delete().eq('id', tx.id).then(({ error }) => { if (error) setSyncError(error.message) })
       setAccounts(prev => {
         const acc = prev.find(a => a.id === tx.accountId)
@@ -225,7 +240,7 @@ export default function useFinance() {
       saveLocal(KEYS.accounts, next)
       return next
     })
-    if (user) {
+    if (user && !isDemo) {
       supabase.from('transactions').update(transactionToDb(updated, user.id)).eq('id', updated.id).then(({ error }) => { if (error) setSyncError(error.message) })
       setAccounts(prev => {
         const ids = new Set([old.accountId, updated.accountId])
@@ -240,18 +255,18 @@ export default function useFinance() {
   // ── CRUD: Accounts ────────────────────────────────────────────────────────
   function addAccount(account) {
     setAccounts(prev => { const next = [...prev, account]; saveLocal(KEYS.accounts, next); return next })
-    if (user) supabase.from('accounts').insert(accountToDb(account, user.id)).then(({ error }) => { if (error) setSyncError(error.message) })
+    if (user && !isDemo) supabase.from('accounts').insert(accountToDb(account, user.id)).then(({ error }) => { if (error) setSyncError(error.message) })
   }
 
   function deleteAccount(account) {
     setAccounts(prev => { const next = prev.filter(a => a.id !== account.id); saveLocal(KEYS.accounts, next); return next })
     setTransactions(prev => { const next = prev.filter(t => t.accountId !== account.id); saveLocal(KEYS.transactions, next); return next })
-    if (user) supabase.from('accounts').delete().eq('id', account.id).then(({ error }) => { if (error) setSyncError(error.message) })
+    if (user && !isDemo) supabase.from('accounts').delete().eq('id', account.id).then(({ error }) => { if (error) setSyncError(error.message) })
   }
 
   function updateAccount(updated) {
     setAccounts(prev => { const next = prev.map(a => a.id === updated.id ? updated : a); saveLocal(KEYS.accounts, next); return next })
-    if (user) supabase.from('accounts').update(accountToDb(updated, user.id)).eq('id', updated.id).then(({ error }) => { if (error) setSyncError(error.message) })
+    if (user && !isDemo) supabase.from('accounts').update(accountToDb(updated, user.id)).eq('id', updated.id).then(({ error }) => { if (error) setSyncError(error.message) })
   }
 
   // ── Export / Import ───────────────────────────────────────────────────────
@@ -378,6 +393,7 @@ export default function useFinance() {
   return {
     transactions, accounts, selectedPeriod, setSelectedPeriod,
     user, authLoading, isSyncing, syncError, signOut,
+    isDemo, enterDemoMode, exitDemoMode,
     addTransaction, deleteTransaction, updateTransaction,
     addAccount, deleteAccount, updateAccount,
     exportBackup, importBackup,
