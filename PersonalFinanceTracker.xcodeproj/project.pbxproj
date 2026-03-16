@@ -29,6 +29,8 @@
 		B020 /* SupabaseConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A020 /* SupabaseConfig.swift */; };
 		B021 /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A021 /* SupabaseService.swift */; };
 		B022 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = SPP1 /* Supabase */; };
+		B023 /* Config.plist in Resources */ = {isa = PBXBuildFile; fileRef = A022 /* Config.plist */; };
+		B024 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A023 /* AuthView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -53,6 +55,8 @@
 		A019 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Resources/Assets.xcassets"; sourceTree = "<group>"; };
 		A020 /* SupabaseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseConfig.swift; sourceTree = "<group>"; };
 		A021 /* SupabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseService.swift; sourceTree = "<group>"; };
+		A022 /* Config.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Config.plist; sourceTree = "<group>"; };
+		A023 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
 		PROD /* PersonalFinanceTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PersonalFinanceTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -93,6 +97,7 @@
 				GRP3 /* ViewModels */,
 				GRP4 /* Views */,
 				GRPS /* Services */,
+				A022 /* Config.plist */,
 				A019 /* Assets.xcassets */,
 			);
 			path = PersonalFinanceTracker;
@@ -133,8 +138,17 @@
 				GRP7 /* Charts */,
 				GRP8 /* Accounts */,
 				GRPC /* Components */,
+				GRPA /* Auth */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		GRPA /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				A023 /* AuthView.swift */,
+			);
+			path = Auth;
 			sourceTree = "<group>";
 		};
 		GRP5 /* Dashboard */ = {
@@ -249,6 +263,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B019 /* Assets.xcassets in Resources */,
+				B023 /* Config.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -279,6 +294,7 @@
 				B018 /* ContentView.swift in Sources */,
 				B020 /* SupabaseConfig.swift in Sources */,
 				B021 /* SupabaseService.swift in Sources */,
+				B024 /* AuthView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

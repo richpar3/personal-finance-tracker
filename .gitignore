@@ -1,3 +1,6 @@
+# Supabase credentials — copy Config.plist.template → Config.plist and fill in your keys
+PersonalFinanceTracker/Config.plist
+
 # Dependencies
 node_modules/
 

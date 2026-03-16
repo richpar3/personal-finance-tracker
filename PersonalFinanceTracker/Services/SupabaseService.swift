@@ -5,6 +5,7 @@ import Supabase
 
 struct AccountRow: Codable {
     var id: String
+    var userId: String
     var name: String
     var type: String
     var balance: Double
@@ -17,6 +18,7 @@ struct AccountRow: Codable {
 
 struct TransactionRow: Codable {
     var id: String
+    var userId: String
     var date: String
     var category: String
     var amount: Double
@@ -36,6 +38,24 @@ class SupabaseService {
     static let shared = SupabaseService()
     private init() {}
 
+    // MARK: Auth
+
+    func signIn(email: String, password: String) async throws {
+        try await supabase.auth.signIn(email: email, password: password)
+    }
+
+    func signUp(email: String, password: String) async throws {
+        try await supabase.auth.signUp(email: email, password: password)
+    }
+
+    func signOut() async throws {
+        try await supabase.auth.signOut()
+    }
+
+    private func currentUserId() async throws -> String {
+        try await supabase.auth.session.user.id.uuidString
+    }
+
     // MARK: Accounts
 
     func fetchAccounts() async throws -> [Account] {
@@ -48,16 +68,22 @@ class SupabaseService {
     }
 
     func insertAccount(_ account: Account) async throws {
+        let userId = try await currentUserId()
+        var row = AccountRow(from: account)
+        row.userId = userId
         try await supabase
             .from("accounts")
-            .insert(AccountRow(from: account))
+            .insert(row)
             .execute()
     }
 
     func updateAccount(_ account: Account) async throws {
+        let userId = try await currentUserId()
+        var row = AccountRow(from: account)
+        row.userId = userId
         try await supabase
             .from("accounts")
-            .update(AccountRow(from: account))
+            .update(row)
             .eq("id", value: account.id.uuidString)
             .execute()
     }
@@ -82,16 +108,22 @@ class SupabaseService {
     }
 
     func insertTransaction(_ transaction: Transaction) async throws {
+        let userId = try await currentUserId()
+        var row = TransactionRow(from: transaction)
+        row.userId = userId
         try await supabase
             .from("transactions")
-            .insert(TransactionRow(from: transaction))
+            .insert(row)
             .execute()
     }
 
     func updateTransaction(_ transaction: Transaction) async throws {
+        let userId = try await currentUserId()
+        var row = TransactionRow(from: transaction)
+        row.userId = userId
         try await supabase
             .from("transactions")
-            .update(TransactionRow(from: transaction))
+            .update(row)
             .eq("id", value: transaction.id.uuidString)
             .execute()
     }
@@ -145,6 +177,7 @@ extension Account {
 extension AccountRow {
     init(from account: Account) {
         self.id             = account.id.uuidString
+        self.userId         = ""   // set by caller before insert/update
         self.name           = account.name
         self.type           = account.type.rawValue
         self.balance        = account.balance
@@ -185,6 +218,7 @@ extension Transaction {
 extension TransactionRow {
     init(from tx: Transaction) {
         self.id          = tx.id.uuidString
+        self.userId      = ""   // set by caller before insert/update
         self.date        = formatDate(tx.date)
         self.category    = tx.category.rawValue
         self.amount      = tx.amount

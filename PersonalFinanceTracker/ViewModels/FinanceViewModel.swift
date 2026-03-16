@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import Supabase
 
 @MainActor
 class FinanceViewModel: ObservableObject {
@@ -8,6 +9,8 @@ class FinanceViewModel: ObservableObject {
     @Published var selectedPeriod: TimePeriod = .month
     @Published var isSyncing: Bool = false
     @Published var syncError: String? = nil
+    @Published var currentUser: User? = nil
+    @Published var isLoadingAuth: Bool = true
 
     private let transactionsKey = "pft_transactions"
     private let accountsKey = "pft_accounts"
@@ -42,8 +45,50 @@ class FinanceViewModel: ObservableObject {
     }
 
     init() {
-        loadLocalData()
-        Task { await syncFromSupabase() }
+        Task { await observeAuthState() }
+    }
+
+    // MARK: - Auth State
+
+    private func observeAuthState() async {
+        for await (event, session) in supabase.auth.authStateChanges {
+            currentUser = session?.user
+            isLoadingAuth = false
+            switch event {
+            case .initialSession:
+                if session != nil {
+                    loadLocalData()
+                    await syncFromSupabase()
+                }
+            case .signedIn:
+                loadLocalData()
+                await syncFromSupabase()
+            case .signedOut:
+                transactions = []
+                accounts = []
+                clearLocalData()
+            default:
+                break
+            }
+        }
+    }
+
+    // MARK: - Auth Actions
+
+    func signIn(email: String, password: String) async throws {
+        try await SupabaseService.shared.signIn(email: email, password: password)
+    }
+
+    func signUp(email: String, password: String) async throws {
+        try await SupabaseService.shared.signUp(email: email, password: password)
+    }
+
+    func signOut() async {
+        do {
+            try await SupabaseService.shared.signOut()
+        } catch {
+            syncError = error.localizedDescription
+        }
     }
 
     // MARK: - Supabase Sync
@@ -57,11 +102,11 @@ class FinanceViewModel: ObservableObject {
 
             let (fetchedAccounts, fetchedTransactions) = try await (remoteAccounts, remoteTransactions)
 
-            if fetchedAccounts.isEmpty && accounts.isEmpty {
-                // Fresh install: seed sample data then push it to Supabase
+            if fetchedAccounts.isEmpty {
+                // First sign-in: seed sample data and push to Supabase
                 seedSampleData()
                 try await pushAllToSupabase()
-            } else if !fetchedAccounts.isEmpty {
+            } else {
                 accounts     = fetchedAccounts
                 transactions = fetchedTransactions
                 saveLocalData()
@@ -102,20 +147,14 @@ class FinanceViewModel: ObservableObject {
     }
 
     var totalIncome: Double {
-        filteredTransactions
-            .filter { $0.type == .income }
-            .reduce(0) { $0 + $1.amount }
+        filteredTransactions.filter { $0.type == .income }.reduce(0) { $0 + $1.amount }
     }
 
     var totalExpenses: Double {
-        filteredTransactions
-            .filter { $0.type == .expense }
-            .reduce(0) { $0 + $1.amount }
+        filteredTransactions.filter { $0.type == .expense }.reduce(0) { $0 + $1.amount }
     }
 
-    var cashFlow: Double {
-        totalIncome - totalExpenses
-    }
+    var cashFlow: Double { totalIncome - totalExpenses }
 
     var savingsRate: Double {
         guard totalIncome > 0 else { return 0 }
@@ -132,17 +171,13 @@ class FinanceViewModel: ObservableObject {
         let expenses = filteredTransactions.filter { $0.type == .expense }
         let total = expenses.reduce(0) { $0 + $1.amount }
         var categoryMap: [TransactionCategory: Double] = [:]
-        for tx in expenses {
-            categoryMap[tx.category, default: 0] += tx.amount
-        }
+        for tx in expenses { categoryMap[tx.category, default: 0] += tx.amount }
         return categoryMap
             .map { (category: $0.key, amount: $0.value, percentage: total > 0 ? ($0.value / total) * 100 : 0) }
             .sorted { $0.amount > $1.amount }
     }
 
-    var topSpendingCategory: TransactionCategory? {
-        expensesByCategory.first?.category
-    }
+    var topSpendingCategory: TransactionCategory? { expensesByCategory.first?.category }
 
     // MARK: - Monthly Trend Data
 
@@ -159,26 +194,16 @@ class FinanceViewModel: ObservableObject {
         let calendar = Calendar.current
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM"
-
-        var result: [MonthlyData] = []
-        for i in stride(from: 5, through: 0, by: -1) {
-            guard let date = calendar.date(byAdding: .month, value: -i, to: Date()) else { continue }
-            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: date))!
-            let endOfMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
-
-            let monthTx = transactions.filter { $0.date >= startOfMonth && $0.date < endOfMonth }
-            let income = monthTx.filter { $0.type == .income }.reduce(0) { $0 + $1.amount }
+        return (0...5).reversed().compactMap { i -> MonthlyData? in
+            guard let date = calendar.date(byAdding: .month, value: -i, to: Date()) else { return nil }
+            let start = calendar.date(from: calendar.dateComponents([.year, .month], from: date))!
+            let end   = calendar.date(byAdding: .month, value: 1, to: start)!
+            let monthTx  = transactions.filter { $0.date >= start && $0.date < end }
+            let income   = monthTx.filter { $0.type == .income  }.reduce(0) { $0 + $1.amount }
             let expenses = monthTx.filter { $0.type == .expense }.reduce(0) { $0 + $1.amount }
-
-            result.append(MonthlyData(
-                month: formatter.string(from: date),
-                income: income,
-                expenses: expenses,
-                cashFlow: income - expenses,
-                date: date
-            ))
-        }
-        return result
+            return MonthlyData(month: formatter.string(from: date), income: income,
+                               expenses: expenses, cashFlow: income - expenses, date: date)
+        }.reversed()
     }
 
     // MARK: - Daily Spending (last 30 days)
@@ -191,21 +216,18 @@ class FinanceViewModel: ObservableObject {
     }
 
     var dailySpending: [DailySpending] {
-        let calendar = Calendar.current
+        let calendar  = Calendar.current
         let formatter = DateFormatter()
         formatter.dateFormat = "d"
-        var result: [DailySpending] = []
-
-        for i in stride(from: 29, through: 0, by: -1) {
-            guard let date = calendar.date(byAdding: .day, value: -i, to: Date()) else { continue }
-            let startOfDay = calendar.startOfDay(for: date)
-            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        return (0...29).reversed().compactMap { i -> DailySpending? in
+            guard let date = calendar.date(byAdding: .day, value: -i, to: Date()) else { return nil }
+            let start  = calendar.startOfDay(for: date)
+            let end    = calendar.date(byAdding: .day, value: 1, to: start)!
             let amount = transactions
-                .filter { $0.type == .expense && $0.date >= startOfDay && $0.date < endOfDay }
+                .filter { $0.type == .expense && $0.date >= start && $0.date < end }
                 .reduce(0) { $0 + $1.amount }
-            result.append(DailySpending(day: formatter.string(from: date), amount: amount, date: date))
-        }
-        return result
+            return DailySpending(day: formatter.string(from: date), amount: amount, date: date)
+        }.reversed()
     }
 
     // MARK: - CRUD Operations
@@ -220,9 +242,7 @@ class FinanceViewModel: ObservableObject {
                 if let account = accounts.first(where: { $0.id == transaction.accountId }) {
                     try await SupabaseService.shared.updateAccount(account)
                 }
-            } catch {
-                syncError = error.localizedDescription
-            }
+            } catch { syncError = error.localizedDescription }
         }
     }
 
@@ -236,30 +256,25 @@ class FinanceViewModel: ObservableObject {
                 if let account = accounts.first(where: { $0.id == transaction.accountId }) {
                     try await SupabaseService.shared.updateAccount(account)
                 }
-            } catch {
-                syncError = error.localizedDescription
-            }
+            } catch { syncError = error.localizedDescription }
         }
     }
 
     func updateTransaction(_ updated: Transaction) {
-        if let index = transactions.firstIndex(where: { $0.id == updated.id }) {
-            let old = transactions[index]
-            updateAccountBalance(for: old, adding: false)
-            transactions[index] = updated
-            updateAccountBalance(for: updated, adding: true)
-            saveLocalData()
-            Task {
-                do {
-                    try await SupabaseService.shared.updateTransaction(updated)
-                    let affectedIds = Set([old.accountId, updated.accountId])
-                    for account in accounts where affectedIds.contains(account.id) {
-                        try await SupabaseService.shared.updateAccount(account)
-                    }
-                } catch {
-                    syncError = error.localizedDescription
+        guard let index = transactions.firstIndex(where: { $0.id == updated.id }) else { return }
+        let old = transactions[index]
+        updateAccountBalance(for: old, adding: false)
+        transactions[index] = updated
+        updateAccountBalance(for: updated, adding: true)
+        saveLocalData()
+        Task {
+            do {
+                try await SupabaseService.shared.updateTransaction(updated)
+                let affectedIds = Set([old.accountId, updated.accountId])
+                for account in accounts where affectedIds.contains(account.id) {
+                    try await SupabaseService.shared.updateAccount(account)
                 }
-            }
+            } catch { syncError = error.localizedDescription }
         }
     }
 
@@ -267,11 +282,8 @@ class FinanceViewModel: ObservableObject {
         accounts.append(account)
         saveLocalData()
         Task {
-            do {
-                try await SupabaseService.shared.insertAccount(account)
-            } catch {
-                syncError = error.localizedDescription
-            }
+            do { try await SupabaseService.shared.insertAccount(account) }
+            catch { syncError = error.localizedDescription }
         }
     }
 
@@ -280,26 +292,18 @@ class FinanceViewModel: ObservableObject {
         transactions.removeAll { $0.accountId == account.id }
         saveLocalData()
         Task {
-            do {
-                // ON DELETE CASCADE in DB handles child transactions
-                try await SupabaseService.shared.deleteAccount(id: account.id)
-            } catch {
-                syncError = error.localizedDescription
-            }
+            do { try await SupabaseService.shared.deleteAccount(id: account.id) }
+            catch { syncError = error.localizedDescription }
         }
     }
 
     func updateAccount(_ updated: Account) {
-        if let index = accounts.firstIndex(where: { $0.id == updated.id }) {
-            accounts[index] = updated
-            saveLocalData()
-            Task {
-                do {
-                    try await SupabaseService.shared.updateAccount(updated)
-                } catch {
-                    syncError = error.localizedDescription
-                }
-            }
+        guard let index = accounts.firstIndex(where: { $0.id == updated.id }) else { return }
+        accounts[index] = updated
+        saveLocalData()
+        Task {
+            do { try await SupabaseService.shared.updateAccount(updated) }
+            catch { syncError = error.localizedDescription }
         }
     }
 
@@ -321,30 +325,35 @@ class FinanceViewModel: ObservableObject {
     }
 
     private func loadLocalData() {
-        if let data = UserDefaults.standard.data(forKey: transactionsKey),
+        if let data    = UserDefaults.standard.data(forKey: transactionsKey),
            let decoded = try? JSONDecoder().decode([Transaction].self, from: data) {
             transactions = decoded
         }
-        if let data = UserDefaults.standard.data(forKey: accountsKey),
+        if let data    = UserDefaults.standard.data(forKey: accountsKey),
            let decoded = try? JSONDecoder().decode([Account].self, from: data) {
             accounts = decoded
         }
+    }
+
+    private func clearLocalData() {
+        UserDefaults.standard.removeObject(forKey: transactionsKey)
+        UserDefaults.standard.removeObject(forKey: accountsKey)
     }
 
     // MARK: - Sample Data
 
     private func seedSampleData() {
         let checkingId = UUID()
-        let savingsId = UUID()
-        let creditId = UUID()
+        let savingsId  = UUID()
+        let creditId   = UUID()
 
         accounts = [
-            Account(id: checkingId, name: "Chase Checking", type: .checking, balance: 3500.00, lastFourDigits: "4521"),
-            Account(id: savingsId, name: "High-Yield Savings", type: .savings, balance: 15000.00, lastFourDigits: "8834"),
-            Account(id: creditId, name: "Visa Rewards", type: .creditCard, balance: 850.00, lastFourDigits: "9012")
+            Account(id: checkingId, name: "Chase Checking",      type: .checking,    balance: 3500.00,  lastFourDigits: "4521"),
+            Account(id: savingsId,  name: "High-Yield Savings",  type: .savings,     balance: 15000.00, lastFourDigits: "8834"),
+            Account(id: creditId,   name: "Visa Rewards",        type: .creditCard,  balance: 850.00,   lastFourDigits: "9012"),
         ]
 
-        let calendar = Calendar.current
+        let calendar  = Calendar.current
         var sampleTx: [Transaction] = []
 
         let expenseData: [(Int, TransactionCategory, Double, String)] = [
@@ -369,42 +378,28 @@ class FinanceViewModel: ObservableObject {
             (-25, .transport, 28.00, "Uber rides"),
             (-28, .housing, 1800.00, "Monthly rent"),
         ]
-
-        for (dayOffset, category, amount, desc) in expenseData {
-            let date = calendar.date(byAdding: .day, value: dayOffset, to: Date())!
+        for (offset, category, amount, desc) in expenseData {
+            let date      = calendar.date(byAdding: .day, value: offset, to: Date())!
             let accountId = [checkingId, creditId].randomElement()!
-            let accountName = accountId == checkingId ? "Chase Checking" : "Visa Rewards"
-            sampleTx.append(Transaction(
-                date: date,
-                category: category,
-                amount: amount,
-                accountId: accountId,
-                accountName: accountName,
-                description: desc,
-                type: .expense
-            ))
+            sampleTx.append(Transaction(date: date, category: category, amount: amount,
+                                        accountId: accountId,
+                                        accountName: accountId == checkingId ? "Chase Checking" : "Visa Rewards",
+                                        description: desc, type: .expense))
         }
 
         let incomeData: [(Int, TransactionCategory, Double, String)] = [
-            (-1, .salary, 3500.00, "Bi-weekly paycheck"),
-            (-15, .salary, 3500.00, "Bi-weekly paycheck"),
-            (-5, .freelance, 450.00, "Freelance design project"),
-            (-20, .bonus, 200.00, "Performance bonus"),
-            (-30, .salary, 3500.00, "Bi-weekly paycheck"),
-            (-45, .salary, 3500.00, "Bi-weekly paycheck"),
+            (-1,  .salary,   3500.00, "Bi-weekly paycheck"),
+            (-15, .salary,   3500.00, "Bi-weekly paycheck"),
+            (-5,  .freelance, 450.00, "Freelance design project"),
+            (-20, .bonus,     200.00, "Performance bonus"),
+            (-30, .salary,   3500.00, "Bi-weekly paycheck"),
+            (-45, .salary,   3500.00, "Bi-weekly paycheck"),
         ]
-
-        for (dayOffset, category, amount, desc) in incomeData {
-            let date = calendar.date(byAdding: .day, value: dayOffset, to: Date())!
-            sampleTx.append(Transaction(
-                date: date,
-                category: category,
-                amount: amount,
-                accountId: checkingId,
-                accountName: "Chase Checking",
-                description: desc,
-                type: .income
-            ))
+        for (offset, category, amount, desc) in incomeData {
+            let date = calendar.date(byAdding: .day, value: offset, to: Date())!
+            sampleTx.append(Transaction(date: date, category: category, amount: amount,
+                                        accountId: checkingId, accountName: "Chase Checking",
+                                        description: desc, type: .income))
         }
 
         transactions = sampleTx
