@@ -8,6 +8,7 @@ class FinanceViewModel: ObservableObject {
 
     private let transactionsKey = "pft_transactions"
     private let accountsKey = "pft_accounts"
+    private let iCloudStore = NSUbiquitousKeyValueStore.default
 
     enum TimePeriod: String, CaseIterable {
         case week = "Week"
@@ -42,6 +43,19 @@ class FinanceViewModel: ObservableObject {
         loadData()
         if accounts.isEmpty {
             seedSampleData()
+        }
+        iCloudStore.synchronize()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(iCloudDidChangeExternally),
+            name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: iCloudStore
+        )
+    }
+
+    @objc private func iCloudDidChangeExternally(_ notification: Notification) {
+        DispatchQueue.main.async {
+            self.loadFromiCloud()
         }
     }
 
@@ -223,22 +237,48 @@ class FinanceViewModel: ObservableObject {
     // MARK: - Persistence
 
     private func saveData() {
-        if let encodedTransactions = try? JSONEncoder().encode(transactions) {
+        let encoder = JSONEncoder()
+        if let encodedTransactions = try? encoder.encode(transactions) {
             UserDefaults.standard.set(encodedTransactions, forKey: transactionsKey)
+            iCloudStore.set(encodedTransactions, forKey: transactionsKey)
         }
-        if let encodedAccounts = try? JSONEncoder().encode(accounts) {
+        if let encodedAccounts = try? encoder.encode(accounts) {
             UserDefaults.standard.set(encodedAccounts, forKey: accountsKey)
+            iCloudStore.set(encodedAccounts, forKey: accountsKey)
         }
+        iCloudStore.synchronize()
     }
 
     private func loadData() {
-        if let savedTransactions = UserDefaults.standard.data(forKey: transactionsKey),
-           let decodedTransactions = try? JSONDecoder().decode([Transaction].self, from: savedTransactions) {
-            transactions = decodedTransactions
+        // Prefer iCloud data (survives reinstalls), fall back to UserDefaults
+        let decoder = JSONDecoder()
+        if let data = iCloudStore.data(forKey: transactionsKey),
+           let decoded = try? decoder.decode([Transaction].self, from: data) {
+            transactions = decoded
+        } else if let data = UserDefaults.standard.data(forKey: transactionsKey),
+                  let decoded = try? decoder.decode([Transaction].self, from: data) {
+            transactions = decoded
         }
-        if let savedAccounts = UserDefaults.standard.data(forKey: accountsKey),
-           let decodedAccounts = try? JSONDecoder().decode([Account].self, from: savedAccounts) {
-            accounts = decodedAccounts
+        if let data = iCloudStore.data(forKey: accountsKey),
+           let decoded = try? decoder.decode([Account].self, from: data) {
+            accounts = decoded
+        } else if let data = UserDefaults.standard.data(forKey: accountsKey),
+                  let decoded = try? decoder.decode([Account].self, from: data) {
+            accounts = decoded
+        }
+    }
+
+    private func loadFromiCloud() {
+        let decoder = JSONDecoder()
+        if let data = iCloudStore.data(forKey: transactionsKey),
+           let decoded = try? decoder.decode([Transaction].self, from: data) {
+            transactions = decoded
+            UserDefaults.standard.set(data, forKey: transactionsKey)
+        }
+        if let data = iCloudStore.data(forKey: accountsKey),
+           let decoded = try? decoder.decode([Account].self, from: data) {
+            accounts = decoded
+            UserDefaults.standard.set(data, forKey: accountsKey)
         }
     }
 
