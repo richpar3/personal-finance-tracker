@@ -30,7 +30,7 @@ export default function AddTransactionModal({ finance, onClose, editTransaction 
 
     const tx = {
       id:          isEdit ? editTransaction.id : generateId(),
-      date:        new Date(date).toISOString(),
+      date:        new Date(`${date}T00:00:00`).toISOString(),
       category,
       amount:      amt,
       accountId,
