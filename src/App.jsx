@@ -32,6 +32,11 @@ export default function App() {
   return (
     <div className="app">
       {finance.isDemo && <DemoBanner onExit={finance.exitDemoMode} />}
+      {finance.syncError && (
+        <div style={{ background: '#FF3B30', color: '#fff', fontSize: 13, padding: '8px 16px', textAlign: 'center' }}>
+          Sync error: {finance.syncError}
+        </div>
+      )}
       <main className="main-content">
         {activeTab === 0 && <DashboardView finance={finance} onOpenSettings={() => setShowSettings(true)} onAddTx={() => setShowAdd(true)} />}
         {activeTab === 1 && <TransactionListView finance={finance} onAddTx={() => setShowAdd(true)} />}
