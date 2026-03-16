@@ -1,9 +1,15 @@
 import SwiftUI
 import Charts
+import UIKit
+import UniformTypeIdentifiers
 
 struct DashboardView: View {
     @ObservedObject var viewModel: FinanceViewModel
     @State private var showAddTransaction = false
+    @State private var showSettings = false
+    @State private var showImportPicker = false
+    @State private var importError: String?
+    @State private var showImportError = false
 
     var body: some View {
         NavigationStack {
@@ -40,6 +46,15 @@ struct DashboardView: View {
             .navigationTitle("Overview")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 17))
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showAddTransaction = true
@@ -57,6 +72,33 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showAddTransaction) {
                 AddTransactionView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsSheet(viewModel: viewModel, showImportPicker: $showImportPicker)
+            }
+            .fileImporter(
+                isPresented: $showImportPicker,
+                allowedContentTypes: [.json]
+            ) { result in
+                switch result {
+                case .success(let url):
+                    _ = url.startAccessingSecurityScopedResource()
+                    defer { url.stopAccessingSecurityScopedResource() }
+                    do {
+                        try viewModel.importBackup(from: url)
+                    } catch {
+                        importError = error.localizedDescription
+                        showImportError = true
+                    }
+                case .failure(let error):
+                    importError = error.localizedDescription
+                    showImportError = true
+                }
+            }
+            .alert("Import Failed", isPresented: $showImportError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(importError ?? "Unknown error")
             }
         }
     }
@@ -279,6 +321,90 @@ struct DashboardView: View {
         }
     }
 }
+
+// MARK: - Settings Sheet
+
+struct SettingsSheet: View {
+    @ObservedObject var viewModel: FinanceViewModel
+    @Binding var showImportPicker: Bool
+    @Environment(\.dismiss) private var dismiss
+    @State private var exportURL: URL?
+    @State private var showShareSheet = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Toggle(isOn: Binding(
+                        get: { viewModel.isDemoMode },
+                        set: { viewModel.setDemoMode($0) }
+                    )) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Demo Mode")
+                                    .font(.body)
+                                Text("Show sample data — hides your real finances")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "eye.slash.fill")
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                } header: {
+                    Text("Privacy")
+                }
+
+                Section {
+                    Button {
+                        exportURL = viewModel.exportBackup()
+                        showShareSheet = exportURL != nil
+                    } label: {
+                        Label("Export Data", systemImage: "arrow.up.doc.fill")
+                    }
+
+                    Button {
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showImportPicker = true
+                        }
+                    } label: {
+                        Label("Import Backup", systemImage: "arrow.down.doc.fill")
+                    }
+                } header: {
+                    Text("Backup")
+                } footer: {
+                    Text("Export saves a JSON file you can store in Files or iCloud Drive. Import restores from a previous export.")
+                }
+            }
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $showShareSheet) {
+                if let url = exportURL {
+                    ShareSheet(url: url)
+                }
+            }
+        }
+    }
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Account Row Mini
 
 struct AccountRowMini: View {
     let account: Account

@@ -1,13 +1,21 @@
 import SwiftUI
 import Combine
 
+struct FinanceBackup: Codable {
+    let exportDate: Date
+    let transactions: [Transaction]
+    let accounts: [Account]
+}
+
 class FinanceViewModel: ObservableObject {
     @Published var transactions: [Transaction] = []
     @Published var accounts: [Account] = []
     @Published var selectedPeriod: TimePeriod = .month
+    @Published var isDemoMode: Bool = false
 
     private let transactionsKey = "pft_transactions"
     private let accountsKey = "pft_accounts"
+    private let demoModeKey = "pft_demo_mode"
 
     enum TimePeriod: String, CaseIterable {
         case week = "Week"
@@ -39,9 +47,25 @@ class FinanceViewModel: ObservableObject {
     }
 
     init() {
+        let savedDemoMode = UserDefaults.standard.bool(forKey: demoModeKey)
         loadData()
-        if accounts.isEmpty {
+        if savedDemoMode {
+            isDemoMode = true
+            loadDemoData()
+        } else if accounts.isEmpty {
             seedSampleData()
+        }
+    }
+
+    // MARK: - Demo Mode
+
+    func setDemoMode(_ enabled: Bool) {
+        isDemoMode = enabled
+        UserDefaults.standard.set(enabled, forKey: demoModeKey)
+        if enabled {
+            loadDemoData()
+        } else {
+            loadData()
         }
     }
 
@@ -223,6 +247,7 @@ class FinanceViewModel: ObservableObject {
     // MARK: - Persistence
 
     private func saveData() {
+        guard !isDemoMode else { return }
         let encoder = JSONEncoder()
         if let encodedTransactions = try? encoder.encode(transactions) {
             UserDefaults.standard.set(encodedTransactions, forKey: transactionsKey)
@@ -244,14 +269,79 @@ class FinanceViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Export / Import
+
+    func exportBackup() -> URL? {
+        let decoder = JSONDecoder()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        encoder.dateEncodingStrategy = .iso8601
+
+        // Always export real data, even when demo mode is active
+        let exportTransactions: [Transaction]
+        let exportAccounts: [Account]
+        if isDemoMode {
+            if let data = UserDefaults.standard.data(forKey: transactionsKey),
+               let decoded = try? decoder.decode([Transaction].self, from: data) {
+                exportTransactions = decoded
+            } else {
+                exportTransactions = []
+            }
+            if let data = UserDefaults.standard.data(forKey: accountsKey),
+               let decoded = try? decoder.decode([Account].self, from: data) {
+                exportAccounts = decoded
+            } else {
+                exportAccounts = []
+            }
+        } else {
+            exportTransactions = transactions
+            exportAccounts = accounts
+        }
+
+        let backup = FinanceBackup(exportDate: Date(), transactions: exportTransactions, accounts: exportAccounts)
+        guard let data = try? encoder.encode(backup) else { return nil }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let filename = "finance-backup-\(formatter.string(from: Date())).json"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        try? data.write(to: url)
+        return url
+    }
+
+    func importBackup(from url: URL) throws {
+        let data = try Data(contentsOf: url)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let backup = try decoder.decode(FinanceBackup.self, from: data)
+        isDemoMode = false
+        UserDefaults.standard.set(false, forKey: demoModeKey)
+        transactions = backup.transactions
+        accounts = backup.accounts
+        saveData()
+    }
+
     // MARK: - Sample Data
 
     private func seedSampleData() {
+        let (sampleTx, sampleAccounts) = generateSampleData()
+        transactions = sampleTx
+        accounts = sampleAccounts
+        saveData()
+    }
+
+    private func loadDemoData() {
+        let (sampleTx, sampleAccounts) = generateSampleData()
+        transactions = sampleTx
+        accounts = sampleAccounts
+    }
+
+    private func generateSampleData() -> ([Transaction], [Account]) {
         let checkingId = UUID()
         let savingsId = UUID()
         let creditId = UUID()
 
-        accounts = [
+        let sampleAccounts = [
             Account(id: checkingId, name: "Chase Checking", type: .checking, balance: 3500.00, lastFourDigits: "4521"),
             Account(id: savingsId, name: "High-Yield Savings", type: .savings, balance: 15000.00, lastFourDigits: "8834"),
             Account(id: creditId, name: "Visa Rewards", type: .creditCard, balance: 850.00, lastFourDigits: "9012")
@@ -298,7 +388,6 @@ class FinanceViewModel: ObservableObject {
             ))
         }
 
-        // Income entries
         let incomeData: [(Int, TransactionCategory, Double, String)] = [
             (-1, .salary, 3500.00, "Bi-weekly paycheck"),
             (-15, .salary, 3500.00, "Bi-weekly paycheck"),
@@ -321,7 +410,6 @@ class FinanceViewModel: ObservableObject {
             ))
         }
 
-        transactions = sampleTx
-        saveData()
+        return (sampleTx, sampleAccounts)
     }
 }
