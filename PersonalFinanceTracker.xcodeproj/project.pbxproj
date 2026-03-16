@@ -26,6 +26,9 @@
 		B017 /* AddAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A017 /* AddAccountView.swift */; };
 		B018 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A018 /* ContentView.swift */; };
 		B019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A019 /* Assets.xcassets */; };
+		B020 /* SupabaseConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A020 /* SupabaseConfig.swift */; };
+		B021 /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A021 /* SupabaseService.swift */; };
+		B022 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = SPP1 /* Supabase */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +51,8 @@
 		A017 /* AddAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddAccountView.swift; sourceTree = "<group>"; };
 		A018 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A019 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Resources/Assets.xcassets"; sourceTree = "<group>"; };
+		A020 /* SupabaseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseConfig.swift; sourceTree = "<group>"; };
+		A021 /* SupabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseService.swift; sourceTree = "<group>"; };
 		PROD /* PersonalFinanceTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PersonalFinanceTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -56,6 +61,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B022 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -86,9 +92,19 @@
 				GRP2 /* Models */,
 				GRP3 /* ViewModels */,
 				GRP4 /* Views */,
+				GRPS /* Services */,
 				A019 /* Assets.xcassets */,
 			);
 			path = PersonalFinanceTracker;
+			sourceTree = "<group>";
+		};
+		GRPS /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				A020 /* SupabaseConfig.swift */,
+				A021 /* SupabaseService.swift */,
+			);
+			path = Services;
 			sourceTree = "<group>";
 		};
 		GRP2 /* Models */ = {
@@ -184,6 +200,9 @@
 			dependencies = (
 			);
 			name = PersonalFinanceTracker;
+			packageProductDependencies = (
+				SPP1 /* Supabase */,
+			);
 			productName = PersonalFinanceTracker;
 			productReference = PROD /* PersonalFinanceTracker.app */;
 			productType = "com.apple.product-type.application";
@@ -212,6 +231,9 @@
 				Base,
 			);
 			mainGroup = ROOT;
+			packageReferences = (
+				SPRM1 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			productRefGroup = GRP9 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -255,6 +277,8 @@
 				B016 /* TransactionDetailView.swift in Sources */,
 				B017 /* AddAccountView.swift in Sources */,
 				B018 /* ContentView.swift in Sources */,
+				B020 /* SupabaseConfig.swift in Sources */,
+				B021 /* SupabaseService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -451,6 +475,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		SPRM1 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		SPP1 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = SPRM1 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = PROJ /* Project object */;
 }

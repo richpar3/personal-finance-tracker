@@ -1,10 +1,13 @@
 import SwiftUI
 import Combine
 
+@MainActor
 class FinanceViewModel: ObservableObject {
     @Published var transactions: [Transaction] = []
     @Published var accounts: [Account] = []
     @Published var selectedPeriod: TimePeriod = .month
+    @Published var isSyncing: Bool = false
+    @Published var syncError: String? = nil
 
     private let transactionsKey = "pft_transactions"
     private let accountsKey = "pft_accounts"
@@ -39,9 +42,42 @@ class FinanceViewModel: ObservableObject {
     }
 
     init() {
-        loadData()
-        if accounts.isEmpty {
-            seedSampleData()
+        loadLocalData()
+        Task { await syncFromSupabase() }
+    }
+
+    // MARK: - Supabase Sync
+
+    func syncFromSupabase() async {
+        isSyncing = true
+        syncError = nil
+        do {
+            async let remoteAccounts     = SupabaseService.shared.fetchAccounts()
+            async let remoteTransactions = SupabaseService.shared.fetchTransactions()
+
+            let (fetchedAccounts, fetchedTransactions) = try await (remoteAccounts, remoteTransactions)
+
+            if fetchedAccounts.isEmpty && accounts.isEmpty {
+                // Fresh install: seed sample data then push it to Supabase
+                seedSampleData()
+                try await pushAllToSupabase()
+            } else if !fetchedAccounts.isEmpty {
+                accounts     = fetchedAccounts
+                transactions = fetchedTransactions
+                saveLocalData()
+            }
+        } catch {
+            syncError = error.localizedDescription
+        }
+        isSyncing = false
+    }
+
+    private func pushAllToSupabase() async throws {
+        for account in accounts {
+            try await SupabaseService.shared.insertAccount(account)
+        }
+        for transaction in transactions {
+            try await SupabaseService.shared.insertTransaction(transaction)
         }
     }
 
@@ -177,13 +213,33 @@ class FinanceViewModel: ObservableObject {
     func addTransaction(_ transaction: Transaction) {
         transactions.append(transaction)
         updateAccountBalance(for: transaction, adding: true)
-        saveData()
+        saveLocalData()
+        Task {
+            do {
+                try await SupabaseService.shared.insertTransaction(transaction)
+                if let account = accounts.first(where: { $0.id == transaction.accountId }) {
+                    try await SupabaseService.shared.updateAccount(account)
+                }
+            } catch {
+                syncError = error.localizedDescription
+            }
+        }
     }
 
     func deleteTransaction(_ transaction: Transaction) {
         updateAccountBalance(for: transaction, adding: false)
         transactions.removeAll { $0.id == transaction.id }
-        saveData()
+        saveLocalData()
+        Task {
+            do {
+                try await SupabaseService.shared.deleteTransaction(id: transaction.id)
+                if let account = accounts.first(where: { $0.id == transaction.accountId }) {
+                    try await SupabaseService.shared.updateAccount(account)
+                }
+            } catch {
+                syncError = error.localizedDescription
+            }
+        }
     }
 
     func updateTransaction(_ updated: Transaction) {
@@ -192,25 +248,58 @@ class FinanceViewModel: ObservableObject {
             updateAccountBalance(for: old, adding: false)
             transactions[index] = updated
             updateAccountBalance(for: updated, adding: true)
-            saveData()
+            saveLocalData()
+            Task {
+                do {
+                    try await SupabaseService.shared.updateTransaction(updated)
+                    let affectedIds = Set([old.accountId, updated.accountId])
+                    for account in accounts where affectedIds.contains(account.id) {
+                        try await SupabaseService.shared.updateAccount(account)
+                    }
+                } catch {
+                    syncError = error.localizedDescription
+                }
+            }
         }
     }
 
     func addAccount(_ account: Account) {
         accounts.append(account)
-        saveData()
+        saveLocalData()
+        Task {
+            do {
+                try await SupabaseService.shared.insertAccount(account)
+            } catch {
+                syncError = error.localizedDescription
+            }
+        }
     }
 
     func deleteAccount(_ account: Account) {
         accounts.removeAll { $0.id == account.id }
         transactions.removeAll { $0.accountId == account.id }
-        saveData()
+        saveLocalData()
+        Task {
+            do {
+                // ON DELETE CASCADE in DB handles child transactions
+                try await SupabaseService.shared.deleteAccount(id: account.id)
+            } catch {
+                syncError = error.localizedDescription
+            }
+        }
     }
 
     func updateAccount(_ updated: Account) {
         if let index = accounts.firstIndex(where: { $0.id == updated.id }) {
             accounts[index] = updated
-            saveData()
+            saveLocalData()
+            Task {
+                do {
+                    try await SupabaseService.shared.updateAccount(updated)
+                } catch {
+                    syncError = error.localizedDescription
+                }
+            }
         }
     }
 
@@ -220,25 +309,25 @@ class FinanceViewModel: ObservableObject {
         accounts[index].balance += delta
     }
 
-    // MARK: - Persistence
+    // MARK: - Local Persistence (offline cache)
 
-    private func saveData() {
-        if let encodedTransactions = try? JSONEncoder().encode(transactions) {
-            UserDefaults.standard.set(encodedTransactions, forKey: transactionsKey)
+    private func saveLocalData() {
+        if let encoded = try? JSONEncoder().encode(transactions) {
+            UserDefaults.standard.set(encoded, forKey: transactionsKey)
         }
-        if let encodedAccounts = try? JSONEncoder().encode(accounts) {
-            UserDefaults.standard.set(encodedAccounts, forKey: accountsKey)
+        if let encoded = try? JSONEncoder().encode(accounts) {
+            UserDefaults.standard.set(encoded, forKey: accountsKey)
         }
     }
 
-    private func loadData() {
-        if let savedTransactions = UserDefaults.standard.data(forKey: transactionsKey),
-           let decodedTransactions = try? JSONDecoder().decode([Transaction].self, from: savedTransactions) {
-            transactions = decodedTransactions
+    private func loadLocalData() {
+        if let data = UserDefaults.standard.data(forKey: transactionsKey),
+           let decoded = try? JSONDecoder().decode([Transaction].self, from: data) {
+            transactions = decoded
         }
-        if let savedAccounts = UserDefaults.standard.data(forKey: accountsKey),
-           let decodedAccounts = try? JSONDecoder().decode([Account].self, from: savedAccounts) {
-            accounts = decodedAccounts
+        if let data = UserDefaults.standard.data(forKey: accountsKey),
+           let decoded = try? JSONDecoder().decode([Account].self, from: data) {
+            accounts = decoded
         }
     }
 
@@ -296,7 +385,6 @@ class FinanceViewModel: ObservableObject {
             ))
         }
 
-        // Income entries
         let incomeData: [(Int, TransactionCategory, Double, String)] = [
             (-1, .salary, 3500.00, "Bi-weekly paycheck"),
             (-15, .salary, 3500.00, "Bi-weekly paycheck"),
@@ -320,6 +408,6 @@ class FinanceViewModel: ObservableObject {
         }
 
         transactions = sampleTx
-        saveData()
+        saveLocalData()
     }
 }
