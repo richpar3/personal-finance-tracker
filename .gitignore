@@ -1,8 +1,26 @@
+# Supabase credentials — copy Config.plist.template → Config.plist and fill in your keys
+PersonalFinanceTracker/Config.plist
+
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-.DS_Store
-*.xcuserdata/
-*.xcworkspace/xcuserdata/
+build/
 .build/
-*.o
-*.d
+
+# Xcode
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# macOS
+.DS_Store
+
+# Environment
+.env
+.env.local

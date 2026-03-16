@@ -4,6 +4,7 @@ struct ContentView: View {
     @EnvironmentObject var viewModel: FinanceViewModel
     @State private var selectedTab: Int = 0
     @State private var showAddTransaction = false
+    @State private var showSignOutConfirm = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -31,8 +32,29 @@ struct ContentView: View {
             customTabBar
         }
         .ignoresSafeArea(edges: .bottom)
+        .overlay(alignment: .topTrailing) {
+            Button {
+                showSignOutConfirm = true
+            } label: {
+                Image(systemName: "person.circle")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Color(.systemGray2))
+                    .padding(.top, 56)
+                    .padding(.trailing, 20)
+            }
+        }
         .sheet(isPresented: $showAddTransaction) {
             AddTransactionView(viewModel: viewModel)
+        }
+        .confirmationDialog("Account", isPresented: $showSignOutConfirm) {
+            Button("Sign Out", role: .destructive) {
+                Task { await viewModel.signOut() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let email = viewModel.currentUser?.email {
+                Text("Signed in as \(email)")
+            }
         }
     }
 
