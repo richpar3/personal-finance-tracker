@@ -275,10 +275,45 @@ export default function useFinance() {
           if (!Array.isArray(backup.transactions) || !Array.isArray(backup.accounts)) {
             reject(new Error('Invalid backup file')); return
           }
-          setTransactions(backup.transactions)
-          setAccounts(backup.accounts)
-          saveLocal(KEYS.transactions, backup.transactions)
-          saveLocal(KEYS.accounts, backup.accounts)
+          const validAccount = a =>
+            a && typeof a === 'object' &&
+            typeof a.id === 'string' && a.id.length > 0 &&
+            typeof a.name === 'string' && a.name.length > 0 &&
+            typeof a.type === 'string' &&
+            typeof a.balance === 'number' && isFinite(a.balance)
+          const validTransaction = t =>
+            t && typeof t === 'object' &&
+            typeof t.id === 'string' && t.id.length > 0 &&
+            typeof t.date === 'string' && !isNaN(Date.parse(t.date)) &&
+            typeof t.amount === 'number' && isFinite(t.amount) && t.amount > 0 &&
+            (t.type === 'income' || t.type === 'expense') &&
+            typeof t.accountId === 'string' && t.accountId.length > 0
+          if (!backup.accounts.every(validAccount)) {
+            reject(new Error('Backup contains invalid account data')); return
+          }
+          if (!backup.transactions.every(validTransaction)) {
+            reject(new Error('Backup contains invalid transaction data')); return
+          }
+          const accounts = backup.accounts.map(a => ({
+            id: a.id, name: String(a.name).slice(0, 100), type: a.type,
+            balance: a.balance, currency: a.currency ?? 'USD',
+            lastFourDigits: String(a.lastFourDigits ?? '').replace(/\D/g, '').slice(0, 4),
+            color: /^#[0-9A-Fa-f]{6}$/.test(a.color) ? a.color : '#4A90D9',
+            notes: String(a.notes ?? '').slice(0, 500),
+          }))
+          const transactions = backup.transactions.map(t => ({
+            id: t.id, date: t.date, category: String(t.category ?? ''),
+            amount: t.amount, accountId: t.accountId,
+            accountName: String(t.accountName ?? '').slice(0, 100),
+            description: String(t.description ?? '').slice(0, 200),
+            type: t.type, notes: String(t.notes ?? '').slice(0, 500),
+            isRecurring: Boolean(t.isRecurring),
+            tags: Array.isArray(t.tags) ? t.tags.filter(tag => typeof tag === 'string').slice(0, 10) : [],
+          }))
+          setTransactions(transactions)
+          setAccounts(accounts)
+          saveLocal(KEYS.transactions, transactions)
+          saveLocal(KEYS.accounts, accounts)
           resolve()
         } catch (err) { reject(err) }
       }
