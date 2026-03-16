@@ -7,6 +7,12 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
+            if viewModel.isDemoMode {
+                demoBanner
+                    .zIndex(1)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
+
             TabView(selection: $selectedTab) {
                 DashboardView(viewModel: viewModel)
                     .tag(0)
@@ -76,6 +82,33 @@ struct ContentView: View {
                 .fill(Color(.systemBackground))
                 .shadow(color: .black.opacity(0.12), radius: 20, x: 0, y: -4)
         )
+    }
+
+    private var demoBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "eye.slash.fill")
+                .font(.caption)
+            Text("Demo Mode — your real data is hidden")
+                .font(.caption)
+                .fontWeight(.medium)
+            Spacer()
+            Button {
+                viewModel.setDemoMode(false)
+            } label: {
+                Text("Exit")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(.white.opacity(0.25))
+                    .clipShape(Capsule())
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.orange)
+        .ignoresSafeArea(edges: .top)
     }
 
     private func tabBarButton(icon: String, label: String, tag: Int) -> some View {
