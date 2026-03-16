@@ -48,7 +48,6 @@
 		A017 /* AddAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddAccountView.swift; sourceTree = "<group>"; };
 		A018 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A019 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Resources/Assets.xcassets"; sourceTree = "<group>"; };
-		A020 /* PersonalFinanceTracker.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PersonalFinanceTracker.entitlements; sourceTree = "<group>"; };
 		PROD /* PersonalFinanceTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PersonalFinanceTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -84,8 +83,7 @@
 			children = (
 				A001 /* PersonalFinanceTrackerApp.swift */,
 				A018 /* ContentView.swift */,
-				A020 /* PersonalFinanceTracker.entitlements */,
-				GRP2 /* Models */,
+					GRP2 /* Models */,
 				GRP3 /* ViewModels */,
 				GRP4 /* Views */,
 				A019 /* Assets.xcassets */,
@@ -384,8 +382,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = PersonalFinanceTracker/PersonalFinanceTracker.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+					CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
@@ -411,8 +408,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = PersonalFinanceTracker/PersonalFinanceTracker.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+					CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
