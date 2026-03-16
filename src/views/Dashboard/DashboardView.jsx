@@ -1,6 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
 import { formatCurrency, formatDateShort } from '../../utils/formatters'
-import { CATEGORIES, ACCOUNT_TYPES, LIABILITY_TYPES } from '../../utils/categories'
+import { CATEGORIES, ACCOUNT_TYPES } from '../../utils/categories'
 
 const PERIODS = [
   { key: 'week',    label: 'Week' },
@@ -11,7 +11,7 @@ const PERIODS = [
 ]
 
 export default function DashboardView({ finance, onOpenSettings, onAddTx }) {
-  const { netWorth, totalAssets, totalLiabilities, totalIncome, totalExpenses, cashFlow,
+  const { totalIncome, totalExpenses, cashFlow,
           accounts, recentTransactions, monthlyTrend, selectedPeriod, setSelectedPeriod } = finance
 
   return (
@@ -39,22 +39,6 @@ export default function DashboardView({ finance, onOpenSettings, onAddTx }) {
       </div>
 
       <div className="page-content">
-        {/* Net Worth card */}
-        <div className="nw-card">
-          <div className="nw-label">Net Worth</div>
-          <div className="nw-amount">{formatCurrency(netWorth)}</div>
-          <div className="nw-row">
-            <div className="nw-col">
-              <div className="nw-col-label">Assets</div>
-              <div className="nw-col-value">{formatCurrency(totalAssets)}</div>
-            </div>
-            <div className="nw-col">
-              <div className="nw-col-label">Liabilities</div>
-              <div className="nw-col-value">{formatCurrency(totalLiabilities)}</div>
-            </div>
-          </div>
-        </div>
-
         {/* Income / Expenses row */}
         <div style={{ display: 'flex', gap: 12 }}>
           <div className="card cf-card">
@@ -135,7 +119,6 @@ export default function DashboardView({ finance, onOpenSettings, onAddTx }) {
 
 function AccountRowMini({ account }) {
   const type = ACCOUNT_TYPES[account.type] || ACCOUNT_TYPES.other
-  const isLiability = LIABILITY_TYPES.includes(account.type)
   return (
     <div className="acc-row">
       <div className="acc-icon" style={{ background: type.color + '22' }}>
@@ -143,13 +126,7 @@ function AccountRowMini({ account }) {
       </div>
       <div className="acc-info">
         <div className="acc-name">{account.name}</div>
-        <div className="acc-type">{type.label}{account.lastFourDigits ? ` ···${account.lastFourDigits}` : ''}</div>
-      </div>
-      <div className="acc-balance">
-        <div className="acc-balance-amount" style={{ color: isLiability ? 'var(--red)' : 'var(--text)' }}>
-          {formatCurrency(account.balance)}
-        </div>
-        <div className="acc-balance-label">{isLiability ? 'Owed' : 'Available'}</div>
+        <div className="acc-type">{type.label}</div>
       </div>
     </div>
   )

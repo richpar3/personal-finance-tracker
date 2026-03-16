@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { generateSampleData } from '../utils/sampleData'
-import { LIABILITY_TYPES } from '../utils/categories'
 import { supabase } from '../lib/supabase'
 
 const KEYS = {
@@ -346,9 +345,6 @@ export default function useFinance() {
       .sort((a, b) => new Date(b.date) - new Date(a.date))
   }, [transactions, selectedPeriod])
 
-  const netWorth         = useMemo(() => accounts.reduce((s, a) => s + (LIABILITY_TYPES.includes(a.type) ? -Math.abs(a.balance) : a.balance), 0), [accounts])
-  const totalAssets      = useMemo(() => accounts.filter(a => !LIABILITY_TYPES.includes(a.type)).reduce((s, a) => s + a.balance, 0), [accounts])
-  const totalLiabilities = useMemo(() => accounts.filter(a => LIABILITY_TYPES.includes(a.type)).reduce((s, a) => s + a.balance, 0), [accounts])
   const totalIncome      = useMemo(() => filteredTransactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0), [filteredTransactions])
   const totalExpenses    = useMemo(() => filteredTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0), [filteredTransactions])
   const cashFlow         = totalIncome - totalExpenses
@@ -397,7 +393,7 @@ export default function useFinance() {
     addTransaction, deleteTransaction, updateTransaction,
     addAccount, deleteAccount, updateAccount,
     exportBackup, importBackup,
-    filteredTransactions, netWorth, totalAssets, totalLiabilities,
+    filteredTransactions,
     totalIncome, totalExpenses, cashFlow, savingsRate,
     recentTransactions, expensesByCategory, monthlyTrend, dailySpending,
   }
